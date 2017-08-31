@@ -56,6 +56,7 @@
 
 #include "Python.h"
 #include "osdefs.h"
+#include "modulepath.h"
 
 #ifdef MS_WINDOWS
 #include <windows.h>
@@ -391,9 +392,9 @@ get_progpath(void)
                             dllpath, MAXPATHLEN+1,
                             NULL, NULL);
     }
-#else
+#else   // Py_ENABLE_SHARED
     dllpath[0] = 0;
-#endif
+#endif  // Py_ENABLE_SHARED
     wprogpath[MAXPATHLEN]=_T('\0');
     if (GetModuleFileName(NULL, wprogpath, MAXPATHLEN)) {
         WideCharToMultiByte(CP_ACP, 0,
@@ -402,19 +403,19 @@ get_progpath(void)
                             NULL, NULL);
         return;
     }
-#else
+#else   // UNICODE
     /* static init of progpath ensures final char remains \0 */
 #ifdef Py_ENABLE_SHARED
     if (PyWin_DLLhModule)
         if (!GetModuleFileName(PyWin_DLLhModule, dllpath, MAXPATHLEN))
             dllpath[0] = 0;
-#else
+#else   // Py_ENABLE_SHARED
     dllpath[0] = 0;
-#endif
+#endif  // Py_ENABLE_SHARED
     if (GetModuleFileName(NULL, progpath, MAXPATHLEN))
         return;
-#endif
-#endif
+#endif  // UNICODE
+#endif  // MS_WINDOWS
     if (prog == NULL || *prog == '\0')
         prog = "python";
 
@@ -483,15 +484,16 @@ calculate_path(void)
     if (pythonhome == NULL || *pythonhome == '\0') {
         if (search_for_prefix(argv0_path, LANDMARK))
             pythonhome = prefix;
-        else
-            pythonhome = NULL;
+        else {
+            pythonhome = strdup(dllpath);
+            reduce(pythonhome);
+        }
     }
     else
         strncpy(prefix, pythonhome, MAXPATHLEN);
 
     if (envpath && *envpath == '\0')
         envpath = NULL;
-
 
 #ifdef MS_WINDOWS
     /* Calculate zip archive path */
@@ -508,6 +510,12 @@ calculate_path(void)
     }
     else {
         zip_path[0] = 0;
+    }
+
+    // Otherwise use the dllpath
+    if (pythonhome == NULL) {
+        pythonhome = strdup(dllpath);
+        if (pythonhome) reduce(pythonhome);
     }
 
     skiphome = pythonhome==NULL ? 0 : 1;
